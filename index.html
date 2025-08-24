@@ -4,14 +4,26 @@
 <meta charset="UTF-8">
 <title>Gamblebot Lite</title>
 <style>
-body{font-family:Arial,Helvetica,sans-serif;margin:0}
-nav{display:flex;background:#222;color:#fff}
-nav button{flex:1;padding:1em;border:none;background:#222;color:#fff;cursor:pointer}
-nav button.active{background:#555}
-section{display:none;padding:1em}
+:root{
+  --bg:#121212;
+  --fg:#eee;
+  --card:#1e1e1e;
+  --accent:#4caf50;
+  --border:#333;
+}
+body{margin:0;font-family:"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--fg)}
+nav{display:flex;background:var(--card);border-bottom:1px solid var(--border)}
+nav button{flex:1;padding:1em;background:transparent;border:none;color:var(--fg);cursor:pointer;transition:background .2s}
+nav button:hover{background:var(--border)}
+nav button.active{background:var(--accent);color:#000}
+section{display:none;padding:1.5em;max-width:1000px;margin:auto}
 section.active{display:block}
-table{width:100%;border-collapse:collapse;margin-top:1em}
-th,td{border:1px solid #ccc;padding:0.5em;text-align:left}
+table{width:100%;border-collapse:collapse;margin-top:1em;background:var(--card)}
+th,td{padding:0.5em;border:1px solid var(--border);text-align:left}
+th{background:var(--border)}
+tbody tr:nth-child(even){background:#1a1a1a}
+button{background:var(--accent);border:none;color:#000;padding:0.5em 1em;border-radius:4px;cursor:pointer}
+input,select{background:var(--card);border:1px solid var(--border);color:var(--fg);padding:0.3em;border-radius:4px}
 #log{height:150px;overflow-y:auto;background:#000;color:#0f0;padding:0.5em;font-family:monospace;margin-top:1em}
 </style>
 </head>
@@ -84,11 +96,6 @@ function log(msg){const el=document.getElementById('log');const d=document.creat
 function switchTab(id){document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));document.querySelector(`nav button[data-tab="${id}"]`).classList.add('active');document.getElementById(id).classList.add('active');}
 document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
 
-const sampleData=[{
-  id:'demo',sport_key:'basketball_nba',home_team:'Demo A',away_team:'Demo B',
-  bookmakers:[{title:'Bet365',markets:[{key:'h2h',outcomes:[{name:'Demo A',price:1.9},{name:'Demo B',price:1.9}]}]}]
-}];
-
 async function doFetchAndAnalyse(){
   log('Starting data fetch and analysis...');
   const apiKey=els.apiKey.value.trim();
@@ -99,8 +106,7 @@ async function doFetchAndAnalyse(){
   if(!sportKey){log('No sport selected','warning');return;}
 
   if(!apiKey){
-    log('No API key provided, using demo mode','warning');
-    await processData(sampleData);
+    log('❌ No API key provided','error');
     return;
   }
 

@@ -23,3 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Multi-Bet Builder tab with AI-generated multi suggestions
 - Expected value calculations for combined legs
 - Modular functions for future expansion
+
+## [0.3.1] - 2024-08-30
+### Changed
+- Modernized interface with dark theme and streamlined styling
+- Removed demo fallback to ensure live-only odds
+- Launcher now serves files from correct directory to prevent 404 errors

@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.error
 import json
 import webbrowser
+import os
 
 BASE = 'https://api.the-odds-api.com/v4'
 
@@ -83,6 +84,7 @@ def get_server(start=8000):
 
 
 def main(test=False):
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     port, httpd = get_server()
     thread = threading.Thread(target=httpd.serve_forever)
     thread.daemon = True
