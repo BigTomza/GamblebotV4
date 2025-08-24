@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gamblebot Lite</title>
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:0}
+nav{display:flex;background:#222;color:#fff}
+nav button{flex:1;padding:1em;border:none;background:#222;color:#fff;cursor:pointer}
+nav button.active{background:#555}
+section{display:none;padding:1em}
+section.active{display:block}
+table{width:100%;border-collapse:collapse;margin-top:1em}
+th,td{border:1px solid #ccc;padding:0.5em;text-align:left}
+#log{height:150px;overflow-y:auto;background:#000;color:#0f0;padding:0.5em;font-family:monospace;margin-top:1em}
+</style>
+</head>
+<body>
+<nav>
+  <button data-tab="arb" class="active">Arbitrage</button>
+  <button data-tab="ev">+EV</button>
+  <button data-tab="multi">Multi-Bets</button>
+  <button data-tab="settings">Settings</button>
+</nav>
+<section id="arb" class="active">
+  <h2>Arbitrage Opportunities</h2>
+  <button id="fetchBtn">Fetch & Analyse</button>
+  <table id="arbTable">
+    <thead><tr><th>Event</th><th>Bookmaker A</th><th>Odds A</th><th>Bookmaker B</th><th>Odds B</th><th>Profit %</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+<section id="ev">
+  <h2>Positive EV Bets</h2>
+  <table id="evTable">
+    <thead><tr><th>Event</th><th>Outcome</th><th>Bookmaker</th><th>Odds</th><th>EV %</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+<section id="multi">
+  <h2>Multi-Bet Builder</h2>
+  <table id="multiTable">
+    <thead><tr><th>Type</th><th>Legs</th><th>Combined Odds</th><th>Est. Prob</th><th>EV</th><th>Reason</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+<section id="settings">
+  <h2>Settings</h2>
+  <label>API Key <input type="text" id="apiKey"></label><br>
+  <label>Sport <select id="sport">
+    <option value="americanfootball_nfl">NFL</option>
+    <option value="basketball_nba">NBA</option>
+    <option value="soccer_epl">Soccer EPL</option>
+    <option value="baseball_mlb">MLB</option>
+    <option value="all">All Sports</option>
+  </select></label><br>
+  <label>Region <select id="region">
+    <option value="all" selected>Global</option>
+    <option value="au">Australia</option>
+    <option value="uk">United Kingdom</option>
+    <option value="us">United States</option>
+    <option value="eu">Europe</option>
+    <option value="ca">Canada</option>
+  </select></label><br>
+  <label>Market <select id="market">
+    <option value="all" selected>All Markets</option>
+    <option value="h2h">H2H</option>
+    <option value="totals">Totals</option>
+    <option value="spreads">Spreads</option>
+    <option value="outrights">Outrights</option>
+    <option value="player_props">Player Props</option>
+    <option value="team_props">Team Props</option>
+  </select></label>
+  <div id="log"></div>
+</section>
+<script>
+const els={
+  apiKey:document.getElementById('apiKey'),
+  sport:document.getElementById('sport'),
+  region:document.getElementById('region'),
+  market:document.getElementById('market')
+};
+function log(msg){const el=document.getElementById('log');const d=document.createElement('div');d.textContent=new Date().toLocaleTimeString()+': '+msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function switchTab(id){document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));document.querySelectorAll('section').forEach(s=>s.classList.remove('active'));document.querySelector(`nav button[data-tab="${id}"]`).classList.add('active');document.getElementById(id).classList.add('active');}
+document.querySelectorAll('nav button').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
+
+const sampleData=[{
+  id:'demo',sport_key:'basketball_nba',home_team:'Demo A',away_team:'Demo B',
+  bookmakers:[{title:'Bet365',markets:[{key:'h2h',outcomes:[{name:'Demo A',price:1.9},{name:'Demo B',price:1.9}]}]}]
+}];
+
+async function doFetchAndAnalyse(){
+  log('Starting data fetch and analysis...');
+  const apiKey=els.apiKey.value.trim();
+  const sportKey=els.sport.value;
+  const region=els.region.value;
+  const marketType=els.market.value;
+
+  if(!sportKey){log('No sport selected','warning');return;}
+
+  if(!apiKey){
+    log('No API key provided, using demo mode','warning');
+    await processData(sampleData);
+    return;
+  }
+
+  log('🔑 Testing API key validity...');
+  try{
+    const testUrl=`/api/sports/basketball_nba/odds?apiKey=${apiKey}&regions=us&markets=h2h`;
+    const testResp=await fetch(testUrl);
+    if(testResp.status===401){log('❌ API key rejected - Unauthorized');return;}
+    else if(testResp.status===429){log('⚠️ API rate limit exceeded');return;}
+    else if(testResp.status===200){log('✅ API key validated successfully');}
+  }catch(err){log(`❌ API key test failed: ${err.message}`);return;}
+
+  const regionsToFetch=region==='all'?['au','uk','us','eu','ca']:[region];
+  const sportKeys=sportKey==='all'?['basketball_nba','basketball_ncaab','soccer_epl','soccer_uefa_europa_league','soccer_uefa_champs_league','baseball_mlb','americanfootball_nfl','americanfootball_ncaaf','aussierules_afl','icehockey_nhl','tennis_atp_singles','tennis_wta_singles','golf_pga_championship','mma_mixed_martial_arts']:[sportKey];
+  const marketTypes=marketType==='all'?['h2h','totals','spreads','outrights','player_props','team_props']:[marketType];
+  const allEvents=[];
+
+  for(const r of regionsToFetch){
+    for(const s of sportKeys){
+      for(const m of marketTypes){
+        try{
+          log(`🌍 Fetching ${s} ${m} from ${r.toUpperCase()}...`);
+          const url=`/api/sports/${s}/odds?apiKey=${apiKey}&regions=${r}&markets=${m}`;
+          const resp=await fetch(url);
+          if(resp.ok){
+            const data=await resp.json();
+            const events=data.map(ev=>({...ev,region:r,marketType:m}));
+            allEvents.push(...events);
+            log(`✅ Received ${data.length} events`);
+          }else{
+            log(`❌ API error ${resp.status}`);
+          }
+          await new Promise(res=>setTimeout(res,5));
+        }catch(err){
+          log(`❌ Error fetching ${s} from ${r.toUpperCase()}: ${err.message}`);
+        }
+      }
+    }
+  }
+
+  if(allEvents.length===0){log('❌ No events found');return;}
+  await processData(allEvents);
+}
+
+function buildMultiBets(events){
+  const legsMap={};
+  events.forEach(ev=>{
+    ev.bookmakers.forEach(bm=>{
+      bm.markets.forEach(m=>{
+        if(['player_props','team_props'].includes(m.key)){
+          m.outcomes.forEach(o=>{
+            const key=`${ev.id}|${m.key}|${o.name}`;
+            if(!legsMap[key]) legsMap[key]={event:`${ev.home_team} vs ${ev.away_team}`,player:o.name,prices:[]};
+            legsMap[key].prices.push(o.price);
+          });
+        }
+      });
+    });
+  });
+  const legs=Object.values(legsMap).map(l=>{const avgProb=l.prices.reduce((s,p)=>s+1/p,0)/l.prices.length;const prob=1/avgProb;const odds=Math.max(...l.prices);return {...l,prob,odds};}).filter(l=>l.prices.length>1&&l.prob>=0.55);
+  legs.sort((a,b)=>b.prob-a.prob);
+  const multis=[];
+  if(legs.length>=3) multis.push(buildMulti('High floor',legs.slice(0,3)));
+  if(legs.length>=4) multis.push(buildMulti('Balanced',legs.slice(0,4)));
+  if(legs.length>=5) multis.push(buildMulti('Edge-hunt',legs.slice(0,5)));
+  return multis;
+}
+
+function buildMulti(type,legs){
+  const combinedOdds=legs.reduce((acc,l)=>acc*l.odds,1);
+  const estProb=legs.reduce((acc,l)=>acc*l.prob,1);
+  const stake=1;
+  const ev=(estProb*combinedOdds*stake)-((1-estProb)*stake);
+  const events=new Set(legs.map(l=>l.event));
+  const reason=events.size===1?'Same-match tempo synergy':'Diversified across events';
+  const legStr=legs.map(l=>`${l.player} @ ${l.odds.toFixed(2)}`).join(' + ');
+  return {type,legs:legStr,combinedOdds,estProb,ev,reason};
+}
+
+function renderMultis(multis){
+  const tbody=document.querySelector('#multiTable tbody');
+  tbody.innerHTML='';
+  multis.forEach(m=>{const tr=document.createElement('tr');tr.innerHTML=`<td>${m.type}</td><td>${m.legs}</td><td>${m.combinedOdds.toFixed(2)}</td><td>${(m.estProb*100).toFixed(1)}%</td><td>${m.ev.toFixed(2)}</td><td>${m.reason}</td>`;tbody.appendChild(tr);});
+}
+
+async function processData(data){renderTables(data);const multis=buildMultiBets(data);renderMultis(multis);}
+
+function renderTables(events){const arbBody=document.querySelector('#arbTable tbody');const evBody=document.querySelector('#evTable tbody');arbBody.innerHTML='';evBody.innerHTML='';events.forEach(ev=>{const outcomes={};ev.bookmakers.forEach(bm=>{const market=bm.markets.find(m=>m.key==='h2h');if(!market) return;market.outcomes.forEach(o=>{if(!outcomes[o.name]) outcomes[o.name]=[];outcomes[o.name].push({bookmaker:bm.title,price:o.price});});});const names=Object.keys(outcomes);if(names.length===2){const o1=outcomes[names[0]].sort((a,b)=>b.price-a.price)[0];const o2=outcomes[names[1]].sort((a,b)=>b.price-a.price)[0];const inv=1/o1.price+1/o2.price;if(inv<1){const profit=(1-inv)*100;const tr=document.createElement('tr');tr.innerHTML=`<td>${ev.home_team} vs ${ev.away_team}</td><td>${o1.bookmaker}</td><td>${o1.price.toFixed(2)}</td><td>${o2.bookmaker}</td><td>${o2.price.toFixed(2)}</td><td>${profit.toFixed(2)}%</td>`;arbBody.appendChild(tr);}}
+ names.forEach(n=>{const arr=outcomes[n];if(arr.length<2) return;arr.sort((a,b)=>b.price-a.price);const best=arr[0];const avgProb=arr.reduce((s,o)=>s+1/o.price,0)/arr.length;const ev=(best.price*(1/avgProb)-1)*100;if(ev>0){const tr=document.createElement('tr');tr.innerHTML=`<td>${ev.home_team} vs ${ev.away_team}</td><td>${n}</td><td>${best.bookmaker}</td><td>${best.price.toFixed(2)}</td><td>${ev.toFixed(2)}%</td>`;evBody.appendChild(tr);}});});log('Analysis complete');}
+
+document.getElementById('fetchBtn').addEventListener('click',doFetchAndAnalyse);
+</script>
+</body>
+</html>
